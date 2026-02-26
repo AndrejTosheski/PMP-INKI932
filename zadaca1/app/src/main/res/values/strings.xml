@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">PMP-INKI932-Z1</string>
+    <string name="search_query">Enter Twitter search query</string>
+    <string name="tag_query">Tag your query</string>
+    <string name="save_button">Save</string>
+    <string name="tagged_searches">Tagged Searches</string>
+    <string name="clear_button">Clear Tags</string>
+    <string name="edit_button">Edit</string>
+</resources>
