@@ -1,67 +1,153 @@
 package pmp.inki932.z1
 
 import android.os.Bundle
-import android.widget.LinearLayout
-import android.widget.TextView
-import com.google.android.material.textfield.TextInputEditText
-import com.google.android.material.button.MaterialButton
-import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import java.io.File
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : ComponentActivity() {
+
     private val dictionary = mutableMapOf<String, String>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
 
         ensureDictionaryFileExists()
-
-        val searchInput = findViewById<TextInputEditText>(R.id.searchInput)
-        val resultText = findViewById<TextView>(R.id.resultText)
-        val searchButton = findViewById<MaterialButton>(R.id.searchButton)
-        val tagInput = findViewById<TextInputEditText>(R.id.tagInput)
-        val saveButton = findViewById<MaterialButton>(R.id.saveButton)
-        val clearButton = findViewById<MaterialButton>(R.id.clearButton)
-
         loadUserDictionary()
 
-        searchButton.setOnClickListener {
-            val query = searchInput.text.toString().trim().lowercase()
-            var result: String? = null
+        setContent {
+            MainScreen()
+        }
+    }
 
-            if (dictionary.containsKey(query)) {
-                result = dictionary[query]
-            } else {
-                for ((en, mk) in dictionary) {
-                    if (mk.lowercase() == query) {
-                        result = en
-                        break
+    @Composable
+    fun MainScreen() {
+        var searchInput by remember { mutableStateOf("") }
+        var tagInput by remember { mutableStateOf("") }
+        var resultText by remember { mutableStateOf("") }
+
+        var wordList by remember { mutableStateOf(dictionary.toList()) }
+
+        Column(modifier = Modifier.padding(16.dp)) {
+
+            OutlinedTextField(
+                value = searchInput,
+                onValueChange = { searchInput = it },
+                label = { Text("Search") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Button(
+                onClick = {
+                    val query = searchInput.trim().lowercase()
+                    var result: String? = null
+
+                    if (dictionary.containsKey(query)) {
+                        result = dictionary[query]
+                    } else {
+                        for ((en, mk) in dictionary) {
+                            if (mk.lowercase() == query) {
+                                result = en
+                                break
+                            }
+                        }
                     }
+
+                    resultText = result ?: "Word not found"
+                },
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+            ) {
+                Text("Search")
+            }
+
+            Text(
+                text = resultText,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+
+            Row(modifier = Modifier.padding(top = 12.dp)) {
+
+                OutlinedTextField(
+                    value = tagInput,
+                    onValueChange = { tagInput = it },
+                    label = { Text("Add translation") },
+                    modifier = Modifier.weight(1f)
+                )
+
+                Button(
+                    onClick = {
+                        val english = searchInput.trim()
+                        val macedonian = tagInput.trim()
+
+                        if (english.isNotEmpty() && macedonian.isNotEmpty()) {
+                            dictionary[english.lowercase()] = macedonian.lowercase()
+
+                            saveWord(english, macedonian)
+
+                            tagInput = ""
+                            wordList = dictionary.toList()
+                        }
+                    },
+                    modifier = Modifier.padding(start = 8.dp)
+                ) {
+                    Text("Save")
                 }
             }
 
-            resultText.text = result ?: "Word not found"
-        }
+            Text(
+                text = "Tagged Searches",
+                modifier = Modifier.padding(top = 24.dp)
+            )
 
-        saveButton.setOnClickListener {
-            val english = searchInput.text.toString().trim()
-            val macedonian = tagInput.text.toString().trim()
+            LazyColumn(modifier = Modifier.padding(top = 12.dp)) {
+                items(wordList) { (en, mk) ->
+                    TagRow(
+                        en = en,
+                        mk = mk,
+                        onDelete = {
+                            dictionary.remove(en.lowercase())
+                            updateFile()
+                            wordList = dictionary.toList()
+                        }
+                    )
+                }
+            }
 
-            if (english.isNotEmpty() && macedonian.isNotEmpty()) {
-                dictionary[english.lowercase()] = macedonian.lowercase()
-
-                saveWord(english, macedonian)
-
-                tagInput.setText("")
+            Button(
+                onClick = {
+                    dictionary.clear()
+                    getDictionaryFile().writeText("")
+                    wordList = emptyList()
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 24.dp)
+            ) {
+                Text("Clear All")
             }
         }
+    }
 
-        clearButton.setOnClickListener {
-            dictionary.clear()
-            getDictionaryFile().writeText("")
-            val tagContainer = findViewById<LinearLayout>(R.id.tagContainer)
-            tagContainer.removeAllViews()
+    @Composable
+    fun TagRow(en: String, mk: String, onDelete: () -> Unit) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("$en → $mk")
+
+            Button(onClick = onDelete) {
+                Text("Delete")
+            }
         }
     }
 
@@ -84,54 +170,27 @@ class MainActivity : AppCompatActivity() {
         val file = getDictionaryFile()
         if (!file.exists()) return
 
-        val reader = file.bufferedReader()
-        reader.forEachLine {
+        file.forEachLine {
             val parts = it.split(",")
             if (parts.size == 2) {
                 val en = parts[0].trim().lowercase()
                 val mk = parts[1].trim().lowercase()
                 dictionary[en] = mk
-                addTagToUI(en, mk)
             }
         }
-        reader.close()
     }
 
-    fun saveWord(en: String, mk: String) {
+    private fun saveWord(en: String, mk: String) {
         val text = "$en, $mk\n"
         openFileOutput("en_mk_recnik.txt", MODE_APPEND).use {
             it.write(text.toByteArray())
         }
-
-        addTagToUI(en, mk)
     }
 
-    private fun addTagToUI(en: String, mk: String) {
-        val tagContainer = findViewById<LinearLayout>(R.id.tagContainer)
-
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(4, 4, 4, 4)
-        }
-
-        val textView = TextView(this).apply {
-            text = "$en → $mk"
-            textSize = 16f
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-
-        val deleteButton = MaterialButton(this).apply {
-            text = "Delete"
-            setOnClickListener {
-                tagContainer.removeView(row)
-                dictionary.remove(en.lowercase())
-                val file = getDictionaryFile()
-                file.writeText(dictionary.entries.joinToString("\n") { "${it.key}, ${it.value}" })
-            }
-        }
-
-        row.addView(textView)
-        row.addView(deleteButton)
-        tagContainer.addView(row)
+    private fun updateFile() {
+        val file = getDictionaryFile()
+        file.writeText(dictionary.entries.joinToString("\n") {
+            "${it.key}, ${it.value}"
+        })
     }
 }
